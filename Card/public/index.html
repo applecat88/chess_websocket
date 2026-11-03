@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chess — two seats</title>
+  <style>
+    :root {
+      --room: #221c16;
+      --cream: #f3eadb;
+      --ink: #1c1612;
+      --muted: #d9cbb8;
+      --light: #f0d9b5;
+      --dark: #b58863;
+      --last-light: #f4e37a;
+      --last-dark: #d7c354;
+      --check: #d4645a;
+      --log: #14110e;
+      --line: #8a7460;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--room);
+      color: var(--cream);
+      font-family: "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 22px 18px 40px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-family: Georgia, "Palatino Linotype", serif;
+      font-size: 32px;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+    }
+
+    p { margin: 0; max-width: 68ch; color: var(--muted); line-height: 1.45; }
+
+    .row, .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 14px 0;
+    }
+
+    input, button {
+      font: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+
+    input {
+      background: var(--cream);
+      color: var(--ink);
+      padding: 8px 12px;
+    }
+
+    button {
+      background: var(--cream);
+      color: var(--ink);
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    button:disabled, input:disabled { opacity: 0.45; cursor: default; }
+
+    #conn, #status { color: var(--muted); }
+
+    .stage {
+      display: grid;
+      grid-template-columns: minmax(280px, 560px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      width: min(92vw, 560px);
+      border: 2px solid #3a2e24;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .sq {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      aspect-ratio: 1;
+      border: 0;
+      padding: 0;
+      font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+      background: var(--light);
+    }
+
+    .sq.dark { background: var(--dark); }
+    .sq.light.last { background: var(--last-light); }
+    .sq.dark.last { background: var(--last-dark); }
+    .sq.check { background: var(--check); }
+    .sq.selected { box-shadow: inset 0 0 0 3px var(--cream); }
+    .sq:focus-visible { outline: 2px solid var(--cream); outline-offset: -4px; }
+
+    .piece {
+      font-size: clamp(26px, 4.4vw, 50px);
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .piece.white {
+      color: #fffaf3;
+      text-shadow: 0 1px 0 #2a2118, 1px 0 #2a2118, -1px 0 #2a2118, 0 -1px #2a2118;
+    }
+
+    .piece.black { color: #1a120c; }
+
+    .sq i {
+      position: absolute;
+      font-style: normal;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .sq .rank { top: 2px; left: 3px; }
+    .sq .file { right: 3px; bottom: 1px; }
+    .sq.light i { color: #8d6243; }
+    .sq.dark i { color: #f3e6d0; }
+
+    .sq.target::after, .sq.capture::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .sq.target::after {
+      width: 18%;
+      aspect-ratio: 1;
+      background: rgba(28, 22, 16, 0.38);
+    }
+
+    .sq.capture::after {
+      width: 86%;
+      aspect-ratio: 1;
+      box-shadow: inset 0 0 0 5px rgba(28, 22, 16, 0.4);
+    }
+
+    #promote {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    #promote button {
+      font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+      font-size: 28px;
+      line-height: 1;
+      padding: 4px 10px;
+    }
+
+    .fen {
+      margin-top: 8px;
+      color: var(--muted);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .side-head, .log-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .seat {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid #3a2e24;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+
+    .seat strong { font-weight: 600; }
+    .seat .who { color: var(--muted); }
+
+    #history {
+      min-height: 72px;
+      max-height: 180px;
+      overflow: auto;
+      margin: 0 0 12px;
+      padding-left: 1.4em;
+    }
+
+    #history li { padding: 1px 0; }
+    #history li.empty { list-style: none; margin-left: -1.2em; color: var(--muted); }
+
+    #log {
+      height: 320px;
+      overflow: auto;
+      background: var(--log);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    #log div { margin: 0 0 4px; word-break: break-word; }
+    #log .out { color: #f0c14a; }
+    #log .in { color: #8fd9b5; }
+
+    #notice { min-height: 1.2em; color: #f0c14a; }
+
+    @media (max-width: 860px) {
+      .stage { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Chess</h1>
+    <p>
+      Open this page in two windows. Each window keeps one WebSocket.
+      Click a piece, then a destination. The piece stays put until the
+      server accepts the move and sends the position back.
+    </p>
+
+    <div class="row">
+      <input id="name" maxlength="16" value="Ada" aria-label="Your name" autocomplete="off" />
+      <button id="connect" type="button">Connect</button>
+      <button id="leave" type="button" disabled>Disconnect</button>
+      <span id="conn">not connected</span>
+    </div>
+
+    <div class="stage">
+      <div>
+        <div id="board" role="group" aria-label="Chessboard"></div>
+        <div id="promote" hidden></div>
+        <p id="status">Connect to sit down.</p>
+        <p id="notice" aria-live="polite"></p>
+        <div class="fen" id="fen"></div>
+        <div class="actions">
+          <button id="resign" type="button" disabled>Resign</button>
+          <button id="restart" type="button" disabled>New game</button>
+        </div>
+      </div>
+      <div>
+        <div class="side-head"><span>seats</span></div>
+        <div id="seats"></div>
+        <div class="side-head"><span>moves</span></div>
+        <ol id="history"></ol>
+        <div class="log-head">
+          <span>wire log — gold sent, green received</span>
+          <span id="counts">sent 0 · received 0</span>
+        </div>
+        <div id="log" aria-live="polite"></div>
+      </div>
+    </div>
+  </main>
+  <script src="/game.js"></script>
+</body>
+</html>

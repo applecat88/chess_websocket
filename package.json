@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "ws": "^8.22.1"
+  },
+  "name": "websocket_sample",
+  "version": "1.0.0",
+  "description": "Coin Rush, a short multiplayer game for studying WebSockets",
+  "main": "server.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "chess": "node Card/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

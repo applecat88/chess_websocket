@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Coin Rush — WebSocket study</title>
+  <style>
+    :root {
+      --paper: #f3efe6;
+      --ink: #1d1a16;
+      --muted: #5e584e;
+      --line: #d9d1c3;
+      --arena: #172033;
+      --log: #101c18;
+      --out: #f0c14a;
+      --in: #8fd9b5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 24px 48px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+    }
+
+    p {
+      margin: 0;
+      max-width: 72ch;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    input, button {
+      font: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+    }
+
+    input:disabled { opacity: 0.55; }
+
+    button {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+      cursor: pointer;
+    }
+
+    button.ghost {
+      background: transparent;
+      color: var(--ink);
+    }
+
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    #status { color: var(--muted); }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 640px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    canvas {
+      display: block;
+      width: 640px;
+      max-width: 100%;
+      height: auto;
+      background: var(--arena);
+      border-radius: 10px;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .log-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #log {
+      height: 480px;
+      overflow: auto;
+      background: var(--log);
+      color: #d7efe4;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    #log div { margin: 0 0 4px; word-break: break-word; }
+    #log .out { color: var(--out); }
+    #log .in { color: var(--in); }
+
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 28px;
+      margin-top: 18px;
+      font-size: 14px;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    .try {
+      margin-top: 16px;
+    }
+
+    @media (max-width: 980px) {
+      .stage, .legend { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Coin Rush</h1>
+    <p>
+      One browser window is one player. Each window holds a single WebSocket
+      open to the server. The dark panel is the raw JSON on that socket:
+      gold lines are yours, green lines came back from the server. Walk into
+      the coin. The server is the only thing that may give you the point.
+    </p>
+
+    <div class="row">
+      <input id="name" maxlength="12" value="Ada" aria-label="Your name" />
+      <button id="connect" type="button">Connect</button>
+      <button id="disconnect" type="button" class="ghost" disabled>Disconnect</button>
+      <span id="status">not connected</span>
+    </div>
+
+    <div class="stage">
+      <div>
+        <canvas id="arena" width="640" height="480" aria-label="Game arena"></canvas>
+        <div class="meta">
+          <span id="scores">no players</span>
+          <span id="coin">arrows or WASD</span>
+        </div>
+      </div>
+      <div>
+        <div class="log-head">
+          <span>wire log</span>
+          <span id="counts">sent 0 · received 0</span>
+        </div>
+        <div id="log" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div><code>join</code> — you tell the server your name</div>
+      <div><code>welcome</code> — server answers only you, with the whole room</div>
+      <div><code>joined</code> / <code>left</code> — server tells everyone else</div>
+      <div><code>move</code> — you tell the server where you walked</div>
+      <div><code>moved</code> — server repeats that position to every socket</div>
+      <div><code>scored</code> — server gives the point and places a new coin</div>
+    </div>
+
+    <p class="try">
+      The console variable <code>socket</code> is the live connection. Send
+      <code>socket.send(JSON.stringify({type:"scored", score:99}))</code>.
+      The server answers with <code>error</code>. Your score does not change,
+      because the browser does not get to invent one.
+    </p>
+  </main>
+  <script src="/game.js"></script>
+</body>
+</html>
