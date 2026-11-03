@@ -4,13 +4,17 @@
   },
   "name": "websocket_sample",
   "version": "1.0.0",
-  "description": "Coin Rush, a short multiplayer game for studying WebSockets",
-  "main": "server.js",
+  "description": "Chess tables for players on different computers, plus Coin Rush",
+  "main": "Card/server.js",
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js",
-    "chess": "node Card/server.js"
+    "start": "node Card/server.js",
+    "chess": "node Card/server.js",
+    "coin": "node server.js"
   },
   "keywords": [],
   "author": "",

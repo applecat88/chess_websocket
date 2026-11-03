@@ -1,8 +1,8 @@
-// Browser half of the chess table.
+// Browser half of the chess tables.
 //
-// new WebSocket opens the pipe. socket.send asks for a move.
-// The "message" event brings back a state frame, and that frame is the board.
-// Nothing on the canvas moves ahead of the server.
+// new WebSocket opens the pipe. socket.send asks to sit, watch, or move.
+// The "message" event brings back a lobby frame or a state frame.
+// Nothing on the board moves ahead of the server.
 
 const FILES = "abcdefgh";
 const GLYPH = {
@@ -10,6 +10,15 @@ const GLYPH = {
     k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟",
 };
 const PROMO_NAME = { q: "queen", r: "rook", b: "bishop", n: "knight" };
+const ROOM_LABEL = {
+    waiting: "waiting",
+    playing: "playing",
+    checkmate: "checkmate",
+    stalemate: "draw",
+    draw: "draw",
+    resigned: "resigned",
+    abandoned: "player left",
+};
 
 const boardEl = document.querySelector("#board");
 const promoteEl = document.querySelector("#promote");
@@ -23,27 +32,62 @@ const logEl = document.querySelector("#log");
 const countsEl = document.querySelector("#counts");
 const nameInput = document.querySelector("#name");
 const connectBtn = document.querySelector("#connect");
-const leaveBtn = document.querySelector("#leave");
+const disconnectBtn = document.querySelector("#disconnect");
 const resignBtn = document.querySelector("#resign");
 const restartBtn = document.querySelector("#restart");
+const exitBtn = document.querySelector("#exit");
+const lobbyEl = document.querySelector("#lobby");
+const tableEl = document.querySelector("#table");
+const playBtn = document.querySelector("#play");
+const hostBtn = document.querySelector("#host");
+const joinBtn = document.querySelector("#join");
+const codeInput = document.querySelector("#code");
+const onlineEl = document.querySelector("#online");
+const lobbyStatusEl = document.querySelector("#lobby-status");
+const roomsEl = document.querySelector("#rooms");
+const linkInput = document.querySelector("#link");
+const copyBtn = document.querySelector("#copy");
+const tableLabelEl = document.querySelector("#table-label");
+const watchersEl = document.querySelector("#watchers");
 
 let socket = null;
 let state = emptyState();
+let lobby = null;
 let selected = null;
 let pending = null;
 let banner = "";
 let sent = 0;
 let received = 0;
+let linkedRoom = cleanCode(new URLSearchParams(location.search).get("room"));
 
 connectBtn.addEventListener("click", connect);
-leaveBtn.addEventListener("click", () => socket && socket.close());
+disconnectBtn.addEventListener("click", () => socket && socket.close());
 resignBtn.addEventListener("click", () => send({ type: "resign" }));
 restartBtn.addEventListener("click", () => send({ type: "restart" }));
+exitBtn.addEventListener("click", () => send({ type: "leave" }));
+playBtn.addEventListener("click", () => {
+    setLobbyBusy(true);
+    send({ type: "play" });
+});
+hostBtn.addEventListener("click", () => {
+    setLobbyBusy(true);
+    send({ type: "create" });
+});
+joinBtn.addEventListener("click", joinByCode);
+copyBtn.addEventListener("click", copyLink);
+nameInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") connect();
+});
+codeInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") joinByCode();
+});
 render();
 
 function emptyState() {
     return {
         you: null,
+        room: null,
+        open: false,
         rows: [
             "rnbqkbnr",
             "pppppppp",
@@ -64,12 +108,18 @@ function emptyState() {
         last: null,
         history: [],
         moves: [],
+        watchers: 0,
         notice: null,
     };
 }
 
+function cleanCode(value) {
+    const code = String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return /^[a-z0-9]{4}$/.test(code) ? code : "";
+}
+
 function connect() {
-    if (socket && socket.readyState === WebSocket.OPEN) return;
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
     sent = 0;
     received = 0;
@@ -78,16 +128,19 @@ function connect() {
     logEl.textContent = "";
     updateCounts();
 
-    socket = new WebSocket(`ws://${location.host}`);
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(`${proto}//${location.host}`);
     window.socket = socket;
     connectBtn.disabled = true;
     nameInput.disabled = true;
     connEl.textContent = "opening the socket…";
 
     socket.addEventListener("open", () => {
-        leaveBtn.disabled = false;
-        connEl.textContent = "socket open, waiting for a seat…";
-        send({ type: "join", name: nameInput.value });
+        disconnectBtn.disabled = false;
+        connEl.textContent = "socket open…";
+        const hello = { type: "hello", name: nameInput.value };
+        if (linkedRoom) hello.room = linkedRoom;
+        send(hello);
     });
 
     socket.addEventListener("message", (event) => {
@@ -110,12 +163,13 @@ function connect() {
         selected = null;
         pending = null;
         banner = "";
+        lobby = null;
         state = emptyState();
         connEl.textContent = "disconnected";
         connectBtn.disabled = false;
-        leaveBtn.disabled = true;
+        disconnectBtn.disabled = true;
         nameInput.disabled = false;
-        render();
+        showOffline();
     });
 
     socket.addEventListener("error", () => {
@@ -127,8 +181,24 @@ function apply(data) {
     if (data.type === "error") {
         banner = data.text;
         noticeEl.textContent = banner;
+        lobbyStatusEl.textContent = banner;
+        setLobbyBusy(false);
         return;
     }
+
+    if (data.type === "lobby") {
+        lobby = data;
+        state = emptyState();
+        selected = null;
+        pending = null;
+        banner = "";
+        linkedRoom = null;
+        if (location.search) history.replaceState(null, "", location.pathname);
+        connEl.textContent = `connected as ${data.you} · ${data.online} online`;
+        showLobby();
+        return;
+    }
+
     if (data.type !== "state") return;
 
     state = data;
@@ -136,9 +206,11 @@ function apply(data) {
     if (selected && !state.moves.some((move) => move.from === selected)) selected = null;
     pending = null;
     const seat = state.you === "w" ? "white" : state.you === "b" ? "black" : "watching";
-    const name = state.you ? state.seats[state.you] : "";
-    connEl.textContent = state.you ? `connected as ${name}, ${seat}` : "connected, watching";
-    render();
+    const name = state.you ? state.seats[state.you] : data.you;
+    connEl.textContent = state.you
+        ? `connected as ${name}, ${seat}`
+        : `connected, watching table ${state.room}`;
+    showTable();
 }
 
 function send(message) {
@@ -148,6 +220,56 @@ function send(message) {
     sent += 1;
     updateCounts();
     writeLog("out", raw);
+}
+
+function joinByCode() {
+    const code = cleanCode(codeInput.value);
+    if (!code) {
+        lobbyStatusEl.textContent = "A table code is 4 letters or numbers.";
+        return;
+    }
+    setLobbyBusy(true);
+    send({ type: "join", room: code });
+}
+
+function setLobbyBusy(busy) {
+    playBtn.disabled = busy;
+    hostBtn.disabled = busy;
+    joinBtn.disabled = busy;
+}
+
+function showOffline() {
+    lobbyEl.hidden = true;
+    tableEl.hidden = false;
+    render();
+}
+
+function showLobby() {
+    lobbyEl.hidden = false;
+    tableEl.hidden = true;
+    setLobbyBusy(false);
+    renderLobby();
+}
+
+function showTable() {
+    lobbyEl.hidden = true;
+    tableEl.hidden = false;
+    if (state.room) history.replaceState(null, "", `/?room=${state.room}`);
+    render();
+}
+
+function copyLink() {
+    if (!linkInput.value) return;
+    linkInput.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(linkInput.value).then(() => {
+            noticeEl.textContent = "Link copied.";
+        }).catch(() => {
+            noticeEl.textContent = "The link is selected. Copy it from the box.";
+        });
+        return;
+    }
+    noticeEl.textContent = "The link is selected. Copy it from the box.";
 }
 
 function onSquare(name) {
@@ -221,13 +343,54 @@ function render() {
     statusEl.textContent = statusText();
     noticeEl.textContent = banner;
     fenEl.textContent = state.fen || "";
+    tableLabelEl.textContent = state.room ? `table ${state.room}` : "table";
+    watchersEl.textContent = state.room ? `${state.watchers || 0} watching` : "";
+    linkInput.value = state.room ? `${location.origin}/?room=${state.room}` : "";
+    copyBtn.disabled = !state.room;
     renderSeats();
     renderHistory();
     renderPromote();
 
     const seated = state.you === "w" || state.you === "b";
+    const finished = ["checkmate", "stalemate", "draw", "resigned", "abandoned", "waiting"].includes(state.status);
     resignBtn.disabled = !(seated && state.status === "playing");
-    restartBtn.disabled = !seated;
+    restartBtn.disabled = !(seated && finished);
+    exitBtn.disabled = !state.room;
+}
+
+function renderLobby() {
+    const count = lobby.online === 1 ? "1 person online" : `${lobby.online} people online`;
+    onlineEl.textContent = count;
+    if (lobby.notice) {
+        lobbyStatusEl.textContent = lobby.notice;
+    } else if (!lobby.rooms.length) {
+        lobbyStatusEl.textContent = "No open tables yet. Play seats you with the next person online.";
+    } else {
+        const word = lobby.rooms.length === 1 ? "table" : "tables";
+        lobbyStatusEl.textContent = `${lobby.rooms.length} open ${word}.`;
+    }
+
+    roomsEl.replaceChildren();
+    for (const room of lobby.rooms) {
+        const row = document.createElement("div");
+        row.className = "room";
+        const text = document.createElement("span");
+        const white = room.white || "empty";
+        const black = room.black || "empty";
+        const label = ROOM_LABEL[room.status] || room.status;
+        const extra = room.watchers ? ` · ${room.watchers} watching` : "";
+        text.textContent = `${room.id} · ${label} · ${white} vs ${black} · ${room.moves} moves${extra}`;
+        const seatOpen = (!room.white || !room.black) && room.status !== "playing";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = seatOpen ? "Join" : "Watch";
+        button.addEventListener("click", () => {
+            setLobbyBusy(true);
+            send({ type: seatOpen ? "join" : "watch", room: room.id });
+        });
+        row.append(text, button);
+        roomsEl.append(row);
+    }
 }
 
 function renderPromote() {
@@ -288,13 +451,17 @@ function renderHistory() {
 }
 
 function statusText() {
-    if (state.status === "offline") return "Connect to sit down.";
-    if (state.status === "waiting") return "Waiting for the second player.";
-    if (state.status === "paused") return "A player left. The board stays until someone sits down.";
+    if (state.status === "offline") return "Connect, then press Play.";
+    if (state.status === "waiting") {
+        return state.open
+            ? "Waiting for an opponent. Anyone who presses Play can sit here."
+            : "Waiting for your friend. Share the table link.";
+    }
     if (state.status === "checkmate") return `Checkmate. ${sideName(state.winner)} wins.`;
     if (state.status === "stalemate") return "Stalemate. The game is a draw.";
     if (state.status === "draw") return `Draw by ${state.reason}.`;
     if (state.status === "resigned") return `${sideName(other(state.winner))} resigned. ${sideName(state.winner)} wins.`;
+    if (state.status === "abandoned") return `${sideName(state.winner)} wins. The other player left.`;
     const check = state.check ? "Check. " : "";
     if (state.you === state.turn) return `${check}Your move.`;
     return `${check}${sideName(state.turn)} to move.`;

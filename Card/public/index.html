@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chess — two seats</title>
+  <title>Chess</title>
   <style>
     :root {
       --room: #221c16;
@@ -17,9 +17,11 @@
       --check: #d4645a;
       --log: #14110e;
       --line: #8a7460;
+      --gold: #f0c14a;
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     body {
       margin: 0;
@@ -71,9 +73,37 @@
       cursor: pointer;
     }
 
+    button.primary {
+      background: var(--gold);
+      border-color: #c8962e;
+      font-weight: 650;
+    }
+
     button:disabled, input:disabled { opacity: 0.45; cursor: default; }
 
-    #conn, #status { color: var(--muted); }
+    #conn, #status, #lobby-status, #online { color: var(--muted); }
+
+    #link {
+      flex: 1;
+      min-width: 180px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    #code { width: 8em; text-transform: lowercase; }
+
+    .room {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid #3a2e24;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+
+    .room span { color: var(--muted); }
 
     .stage {
       display: grid;
@@ -210,7 +240,7 @@
     #history li.empty { list-style: none; margin-left: -1.2em; color: var(--muted); }
 
     #log {
-      height: 320px;
+      height: 220px;
       overflow: auto;
       background: var(--log);
       border-radius: 8px;
@@ -224,7 +254,7 @@
     #log .out { color: #f0c14a; }
     #log .in { color: #8fd9b5; }
 
-    #notice { min-height: 1.2em; color: #f0c14a; }
+    #notice { min-height: 1.2em; color: var(--gold); }
 
     @media (max-width: 860px) {
       .stage { grid-template-columns: 1fr; }
@@ -235,42 +265,62 @@
   <main>
     <h1>Chess</h1>
     <p>
-      Open this page in two windows. Each window keeps one WebSocket.
-      Click a piece, then a destination. The piece stays put until the
-      server accepts the move and sends the position back.
+      Play a person on another computer. Press Play and the server seats you
+      with the next person who does the same. A table code is only for a
+      friend. The piece stays put until the server accepts the move.
     </p>
 
     <div class="row">
-      <input id="name" maxlength="16" value="Ada" aria-label="Your name" autocomplete="off" />
+      <input id="name" maxlength="16" placeholder="Your name" aria-label="Your name" autocomplete="nickname" />
       <button id="connect" type="button">Connect</button>
-      <button id="leave" type="button" disabled>Disconnect</button>
+      <button id="disconnect" type="button" disabled>Disconnect</button>
       <span id="conn">not connected</span>
     </div>
 
-    <div class="stage">
-      <div>
-        <div id="board" role="group" aria-label="Chessboard"></div>
-        <div id="promote" hidden></div>
-        <p id="status">Connect to sit down.</p>
-        <p id="notice" aria-live="polite"></p>
-        <div class="fen" id="fen"></div>
-        <div class="actions">
-          <button id="resign" type="button" disabled>Resign</button>
-          <button id="restart" type="button" disabled>New game</button>
+    <section id="lobby" hidden>
+      <div class="row">
+        <button id="play" class="primary" type="button">Play</button>
+        <button id="host" type="button">Play a friend</button>
+        <input id="code" maxlength="4" placeholder="code" aria-label="Table code" autocomplete="off" />
+        <button id="join" type="button">Join</button>
+        <span id="online"></span>
+      </div>
+      <p id="lobby-status" aria-live="polite"></p>
+      <div id="rooms"></div>
+    </section>
+
+    <section id="table">
+      <div class="stage">
+        <div>
+          <div id="board" role="group" aria-label="Chessboard"></div>
+          <div id="promote" hidden></div>
+          <p id="status">Connect, then press Play.</p>
+          <p id="notice" aria-live="polite"></p>
+          <div class="fen" id="fen"></div>
+          <div class="actions">
+            <button id="resign" type="button" disabled>Resign</button>
+            <button id="restart" type="button" disabled>New game</button>
+            <button id="exit" type="button" disabled>Leave table</button>
+          </div>
+        </div>
+        <div>
+          <div class="side-head"><span id="table-label">table</span><span id="watchers"></span></div>
+          <div class="row">
+            <input id="link" readonly aria-label="Link to this table" />
+            <button id="copy" type="button" disabled>Copy</button>
+          </div>
+          <div class="side-head"><span>seats</span></div>
+          <div id="seats"></div>
+          <div class="side-head"><span>moves</span></div>
+          <ol id="history"></ol>
+          <div class="log-head">
+            <span>wire log — gold sent, green received</span>
+            <span id="counts">sent 0 · received 0</span>
+          </div>
+          <div id="log" aria-live="polite"></div>
         </div>
       </div>
-      <div>
-        <div class="side-head"><span>seats</span></div>
-        <div id="seats"></div>
-        <div class="side-head"><span>moves</span></div>
-        <ol id="history"></ol>
-        <div class="log-head">
-          <span>wire log — gold sent, green received</span>
-          <span id="counts">sent 0 · received 0</span>
-        </div>
-        <div id="log" aria-live="polite"></div>
-      </div>
-    </div>
+    </section>
   </main>
   <script src="/game.js"></script>
 </body>
